@@ -2,3 +2,4 @@ requests
 Pillow
 pylibdmtx
 reportlab
+pyinstaller
