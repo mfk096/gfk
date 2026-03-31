@@ -5,6 +5,7 @@ import os
 import random
 import re
 import string
+import subprocess
 import tempfile
 import threading
 import time
@@ -124,8 +125,6 @@ class ChestnyZnakClient:
         raise ValueError(f"Неизвестный режим подписи: {mode}")
 
     def _sign_with_cryptopro(self, payload_json: str) -> str:
-        import subprocess
-
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "payload.json"
             sig = Path(tmp) / "payload.sig"
