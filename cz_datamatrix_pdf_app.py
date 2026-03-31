@@ -18,6 +18,7 @@ from PIL import Image
 from pylibdmtx.pylibdmtx import encode
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -30,7 +31,7 @@ from tkinter import ttk, messagebox
 CZ_API_BASE = os.getenv("CZ_API_BASE", "https://ismp.crpt.ru/api/v3/lk")
 CZ_TOKEN = os.getenv("CZ_TOKEN", "")
 CZ_OMS_ID = os.getenv("CZ_OMS_ID", "")
-CZ_PRODUCT_GROUP = os.getenv("CZ_PRODUCT_GROUP", "lp")
+CZ_PRODUCT_GROUP = os.getenv("CZ_PRODUCT_GROUP", "food")
 CZ_CREATE_CODES_ENDPOINT = os.getenv("CZ_CREATE_CODES_ENDPOINT", "/codes/orders")
 CZ_ORDER_STATUS_ENDPOINT = os.getenv("CZ_ORDER_STATUS_ENDPOINT", "/codes/orders/{order_id}")
 CZ_SIGNATURE_MODE = os.getenv("CZ_SIGNATURE_MODE", "none")  # none|base64|cryptopro
@@ -57,7 +58,7 @@ def build_config() -> AppConfig:
         api_base=CZ_API_BASE.rstrip("/"),
         token=CZ_TOKEN.strip(),
         oms_id=CZ_OMS_ID.strip(),
-        product_group=CZ_PRODUCT_GROUP.strip() or "lp",
+        product_group=CZ_PRODUCT_GROUP.strip() or "food",
         create_endpoint=CZ_CREATE_CODES_ENDPOINT,
         status_endpoint=CZ_ORDER_STATUS_ENDPOINT,
         signature_mode=CZ_SIGNATURE_MODE.strip().lower(),
@@ -212,6 +213,7 @@ def export_pdf_with_datamatrix(codes: List[str], output_path: Path) -> None:
         bio = io.BytesIO()
         img.save(bio, format="PNG")
         bio.seek(0)
+        img_reader = ImageReader(bio)
 
         col = x % cols
         row = y % rows
@@ -220,7 +222,7 @@ def export_pdf_with_datamatrix(codes: List[str], output_path: Path) -> None:
 
         side = min(cell_w, cell_h) * 0.65
         c.drawImage(
-            image=bio,
+            image=img_reader,
             x=px + (cell_w - side) / 2,
             y=py + (cell_h - side) / 2 + 5,
             width=side,
