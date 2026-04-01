@@ -16,7 +16,6 @@ from typing import List, Tuple
 import requests
 from PIL import Image
 from pylibdmtx.pylibdmtx import encode
-from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -197,17 +196,56 @@ def dm_image_from_code(dm_code: str, scale: int = 6) -> Image.Image:
     return img.resize((encoded.width * scale, encoded.height * scale), Image.NEAREST)
 
 
+def _fit_text_lines(
+    c: canvas.Canvas,
+    text: str,
+    max_width: float,
+    max_height: float,
+    font_name: str = "Helvetica",
+    max_font_size: float = 7.0,
+    min_font_size: float = 3.0,
+    line_spacing: float = 1.1,
+) -> Tuple[List[str], float]:
+    safe_text = text.replace(GS, "␝")
+    size = max_font_size
+    while size >= min_font_size:
+        words = safe_text.split(" ")
+        lines: List[str] = []
+        cur = ""
+        for word in words:
+            trial = f"{cur} {word}".strip()
+            if c.stringWidth(trial, font_name, size) <= max_width:
+                cur = trial
+                continue
+            if cur:
+                lines.append(cur)
+                cur = word
+            else:
+                part = ""
+                for ch in word:
+                    trial_part = part + ch
+                    if c.stringWidth(trial_part, font_name, size) <= max_width:
+                        part = trial_part
+                    else:
+                        lines.append(part)
+                        part = ch
+                cur = part
+        if cur:
+            lines.append(cur)
+
+        line_h = size * line_spacing
+        if len(lines) * line_h <= max_height:
+            return lines, size
+        size -= 0.5
+
+    return [safe_text], min_font_size
+
+
 def export_pdf_with_datamatrix(codes: List[str], output_path: Path) -> None:
-    c = canvas.Canvas(str(output_path), pagesize=A4)
-    page_w, page_h = A4
+    page_w = 20 * mm
+    page_h = 30 * mm
+    c = canvas.Canvas(str(output_path), pagesize=(page_w, page_h))
 
-    margin = 10 * mm
-    cols = 3
-    rows = 7
-    cell_w = (page_w - margin * 2) / cols
-    cell_h = (page_h - margin * 2) / rows
-
-    x = y = 0
     for idx, code in enumerate(codes, 1):
         img = dm_image_from_code(code)
         bio = io.BytesIO()
@@ -215,33 +253,38 @@ def export_pdf_with_datamatrix(codes: List[str], output_path: Path) -> None:
         bio.seek(0)
         img_reader = ImageReader(bio)
 
-        col = x % cols
-        row = y % rows
-        px = margin + col * cell_w
-        py = page_h - margin - (row + 1) * cell_h
+        margin = 1.5 * mm
+        text_area_h = 10 * mm
+        qr_area_h = page_h - margin * 2 - text_area_h
+        side = min(page_w - margin * 2, qr_area_h)
 
-        side = min(cell_w, cell_h) * 0.65
+        qr_x = (page_w - side) / 2
+        qr_y = page_h - margin - side
         c.drawImage(
             image=img_reader,
-            x=px + (cell_w - side) / 2,
-            y=py + (cell_h - side) / 2 + 5,
+            x=qr_x,
+            y=qr_y,
             width=side,
             height=side,
             preserveAspectRatio=True,
             mask="auto",
         )
 
-        short_text = code.replace(GS, "␝")[:56]
-        c.setFont("Helvetica", 6)
-        c.drawCentredString(px + cell_w / 2, py + 3, short_text)
+        lines, font_size = _fit_text_lines(
+            c=c,
+            text=code,
+            max_width=page_w - margin * 2,
+            max_height=text_area_h,
+        )
+        c.setFont("Helvetica", font_size)
+        line_h = font_size * 1.1
+        total_h = line_h * len(lines)
+        start_y = margin + (text_area_h - total_h) / 2 + (len(lines) - 1) * line_h
+        for i, line in enumerate(lines):
+            c.drawCentredString(page_w / 2, start_y - i * line_h, line)
 
-        x += 1
-        if x % cols == 0:
-            y += 1
-        if y and y % rows == 0 and idx < len(codes):
+        if idx < len(codes):
             c.showPage()
-            x = 0
-            y = 0
 
     c.save()
 
